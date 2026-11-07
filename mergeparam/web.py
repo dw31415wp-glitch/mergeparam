@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 # The tool's only cookies: one per setting, each holding just that setting,
 # and each set only when the editor changes it from the default.
 ACCESS_COOKIE = "access"
-WATCH_COOKIE = "watch"      # "0" when the watchlist box should start unticked
+WATCH_COOKIE = "watch"      # "1" when the watchlist box should start ticked
 AUTO_COOKIE = "auto"        # "1" to move on automatically after publishing
 KIND_COOKIE = "kind"        # which kinds of fix to show, when not all of them
 THEME_COOKIE = "theme"      # "light" or "dark"; no cookie means follow the device
@@ -71,7 +71,7 @@ def create_app(wiki: Wiki | None = None) -> Flask:
         return candidates.valid_access(request.cookies.get(ACCESS_COOKIE))
 
     def current_watch() -> bool:
-        return request.cookies.get(WATCH_COOKIE) != "0"
+        return request.cookies.get(WATCH_COOKIE) == "1"
 
     def current_auto() -> bool:
         return request.cookies.get(AUTO_COOKIE) == "1"
@@ -204,12 +204,19 @@ def create_app(wiki: Wiki | None = None) -> Flask:
         try:
             new_text = infobox.apply(page.text, target.index, value)
         except infobox.InvalidValue as e:
+            if request.headers.get("X-Requested-With") == "fetch":
+                return {"error": str(e)}, 400
             return render_review(page, target, filters, value=value, error=str(e))
         value = infobox.check_value(value)
         action = "drop" if value == (target.education or "").strip() else "merge"
         url, fields = handoff.edit_form(page, new_text, action)
+        if request.headers.get("X-Requested-With") == "fetch":
+            if request.form.get("watch") == "1":
+                fields["wpWatchthis"] = "1"
+            return {"url": url, "fields": fields}
         return render_template("publish.html", page=page, target=target, filters=filters,
-                               value=value, action=action, form_url=url, fields=fields)
+                               value=value, action=action, form_url=url, fields=fields,
+                               watch=request.form.get("watch") == "1")
 
     def render_review(page, target, filters, value=None, error=""):
         wiki = get_wiki()
@@ -292,7 +299,7 @@ def create_app(wiki: Wiki | None = None) -> Flask:
         access = candidates.valid_access(request.form.get("access"))
         remember(resp, ACCESS_COOKIE, None if access == candidates.DEFAULT_ACCESS else access)
         # An unticked checkbox isn't sent at all, so absence means "off".
-        remember(resp, WATCH_COOKIE, None if request.form.get("watch") == "1" else "0")
+        remember(resp, WATCH_COOKIE, "1" if request.form.get("watch") == "1" else None)
         remember(resp, AUTO_COOKIE, "1" if request.form.get("auto") == "1" else None)
         kind = candidates.valid_kind(request.form.get("kind"))
         remember(resp, KIND_COOKIE, None if kind == candidates.DEFAULT_KIND else kind)

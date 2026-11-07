@@ -14,6 +14,7 @@
   <p>{% if action == "drop" %}<code>|education=</code> stays as it is and <code>|alma_mater=</code> will be removed.
      {% else %}<code>|education=</code> will become the value below, and <code>|alma_mater=</code> will be removed.{% endif %}</p>
   {{ code("| education = " ~ value) }}
+  <input type="hidden" data-queue-position value="{{ request.form.get('queue', '') }}">
   <p><a href="{{ url_for('fix', title=page.title, **filters.as_args()) }}" data-back>← Go back and change it</a></p>
   {{ wikipedia_form(form_url, fields, watch, page, target, auto) }}
   {{ next_controls(page, filters) }}

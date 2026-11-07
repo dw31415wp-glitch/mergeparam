@@ -23,7 +23,9 @@
     <input type="checkbox" name="wpWatchthis" value="1" {% if watch %}checked{% endif %}>
     Add this article to my watchlist
   </label>
-  <button type="submit" class="btn primary">Review &amp; publish on Wikipedia <span aria-hidden="true">↗</span></button>
+  <button type="submit" class="btn primary" data-review-button>Review &amp; publish on Wikipedia (Alt+R) <span aria-hidden="true">↗</span></button>
+  <button type="button" class="btn" data-stop-countdown hidden>Stop countdown (Alt+S)</button>
+  <p class="hint" data-countdown-status role="status" aria-live="polite"></p>
   <p class="hint">
     This opens Wikipedia's <strong>Show changes</strong> screen in another tab. Check the diff there,
     then click <strong>Publish changes</strong>. Nothing is saved until you do, and you can change
@@ -41,8 +43,8 @@
     <button type="button" class="btn quiet" data-stay hidden>Stay here</button>
   </div>
   <div class="row">
-    <a class="btn next-btn" href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Next article <span aria-hidden="true">→</span></a>
-    <a class="btn quiet" href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}" data-skip>Skip this one</a>
+    <a class="btn next-btn" data-queue-next href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Next article (Alt+N) <span aria-hidden="true">→</span></a>
+    <a class="btn quiet" data-queue-next href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}" data-skip>Skip this one</a>
   </div>
 </div>
 {% endmacro %}

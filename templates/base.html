@@ -15,6 +15,7 @@
       <a href="{{ url_for('stats') }}">Progress</a>
       <a href="{{ url_for('about') }}">About</a>
       <a href="{{ url_for('settings') }}">Settings</a>
+      <button type="button" class="btn quiet" data-shortcut-toggle hidden></button>
       {# Works as a plain form without JavaScript; app.js switches the theme without a reload. #}
       <form class="theme-toggle" method="post" action="{{ url_for('save_theme') }}" data-theme-toggle>
         <input type="hidden" name="theme" value="{{ next_theme }}">

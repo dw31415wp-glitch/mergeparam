@@ -14,6 +14,14 @@ MERGE_TEXT = ("{{Infobox academic\n| name = B\n| education = [[Stanford Universi
               "| alma_mater = [[Harvard]]\n}}\nText.")
 
 
+def test_start_page_offers_named_article(client_for):
+    client = client_for(make_page("Jane Doe", RENAME_TEXT))
+    body = client.get("/").get_data(as_text=True)
+    assert 'action="/fix"' in body
+    assert 'name="title"' in body
+    assert client.get("/fix", query_string={"title": "Jane Doe"}).status_code == 200
+
+
 def make_page(title, text, revid=100, protection=None):
     protection = [{"type": "edit", "level": protection, "expiry": "infinity"}] if protection else []
     return Page(title=title, pageid=1, revid=revid, timestamp="2026-10-01T12:34:56Z",
@@ -274,7 +282,7 @@ def test_access_is_not_read_from_the_url(client_for):
 
 def test_settings_saves_cookie_and_default_deletes_it(client_for):
     client = client_for()
-    r = client.post("/settings", data={"access": "extendedconfirmed", "watch": "1"})
+    r = client.post("/settings", data={"access": "extendedconfirmed"})
     assert r.status_code == 302 and "saved=1" in r.headers["Location"]
     assert len(r.headers.getlist("Set-Cookie")) == 1
     cookie = r.headers["Set-Cookie"]
@@ -285,12 +293,12 @@ def test_settings_saves_cookie_and_default_deletes_it(client_for):
     assert '<option value="extendedconfirmed" selected>' in body
     assert "Extended confirmed" in client.get("/").get_data(as_text=True)  # start page says so
 
-    r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1"})
+    r = client.post("/settings", data={"access": "autoconfirmed"})
     assert "access=;" in r.headers["Set-Cookie"] and "Max-Age=0" in r.headers["Set-Cookie"]
 
 
 def test_settings_cookie_secure_behind_toolforge_proxy(client_for):
-    r = client_for().post("/settings", data={"access": "sysop", "watch": "1"},
+    r = client_for().post("/settings", data={"access": "sysop"},
                           headers={"X-Forwarded-Proto": "https"})
     assert "Secure" in r.headers["Set-Cookie"]
 
@@ -318,7 +326,7 @@ def test_settings_link_in_header(client_for):
 
 
 def test_saving_defaults_sets_no_cookies(client_for):
-    r = client_for().post("/settings", data={"access": "autoconfirmed", "watch": "1"})
+    r = client_for().post("/settings", data={"access": "autoconfirmed"})
     assert "Set-Cookie" not in r.headers
 
 
@@ -326,25 +334,29 @@ def watch_box(body):
     return re.search(r'<input type="checkbox" name="wpWatchthis" value="1" ?(checked)?>', body).group(1)
 
 
-def test_watchlist_box_ticked_by_default(client_for):
-    client = client_for(make_page("Jane Doe", RENAME_TEXT))
-    assert watch_box(client.get("/fix?title=Jane+Doe").get_data(as_text=True)) == "checked"
-    assert 'name="watch" value="1" checked' in client.get("/settings").get_data(as_text=True)
-
-
-def test_watchlist_setting_off_and_back_on(client_for):
-    client = client_for(make_page("John Roe", MERGE_TEXT))
-    r = client.post("/settings", data={"access": "autoconfirmed"})  # box unticked
-    assert r.headers.getlist("Set-Cookie")[0].startswith("watch=0;")
+def test_watchlist_default_and_setting(client_for):
+    client = client_for(make_page("Jane Doe", RENAME_TEXT), make_page("John Roe", MERGE_TEXT, revid=101))
+    assert watch_box(client.get("/fix?title=Jane+Doe").get_data(as_text=True)) is None
     assert 'name="watch" value="1" >' in client.get("/settings").get_data(as_text=True)
-    body = client.post("/prepare", data={"title": "John Roe", "revid": "100",
-                                         "value": "[[A]]"}).get_data(as_text=True)
-    assert watch_box(body) is None  # unticked on the publish step too
-
     r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1"})
-    assert r.headers["Set-Cookie"].startswith("watch=;") and "Max-Age=0" in r.headers["Set-Cookie"]
-    assert watch_box(client.post("/prepare", data={"title": "John Roe", "revid": "100",
-                                                   "value": "[[A]]"}).get_data(as_text=True)) == "checked"
+    assert r.headers["Set-Cookie"].startswith("watch=1;")
+    assert watch_box(client.get("/fix?title=Jane+Doe").get_data(as_text=True)) == "checked"
+    r = client.post("/settings", data={"access": "autoconfirmed"})
+    assert r.headers["Set-Cookie"].startswith("watch=;")
+
+
+def test_merge_handoff_validates_and_passes_watch_choice(client_for):
+    client = client_for(make_page("John Roe", MERGE_TEXT))
+    headers = {"X-Requested-With": "fetch"}
+    data = {"title": "John Roe", "revid": "100", "value": "[[A]]"}
+    result = client.post("/prepare", data=data, headers=headers).get_json()
+    assert result["fields"]["wpDiff"] == "Show changes"
+    assert "wpWatchthis" not in result["fields"]
+    assert "alma_mater" not in result["fields"]["wpTextbox1"]
+    result = client.post("/prepare", data={**data, "watch": "1"}, headers=headers).get_json()
+    assert result["fields"]["wpWatchthis"] == "1"
+    result = client.post("/prepare", data={**data, "value": "[[A]] | name = Hacked"}, headers=headers)
+    assert result.status_code == 400 and "error" in result.get_json()
 
 
 # ------------------------------------------------------------ auto-advance
@@ -359,7 +371,7 @@ def test_auto_advance_off_by_default(client_for):
 
 def test_auto_advance_setting_adds_poll_data(client_for):
     client = client_for(make_page("Jane Doe", RENAME_TEXT + "\n{{Infobox academic|alma_mater=[[X]]}}"))
-    r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1", "auto": "1"})
+    r = client.post("/settings", data={"access": "autoconfirmed", "auto": "1"})
     assert r.headers["Set-Cookie"].startswith("auto=1;")
     body = client.get("/fix?title=Jane+Doe").get_data(as_text=True)
     assert "data-auto" in body
@@ -369,7 +381,7 @@ def test_auto_advance_setting_adds_poll_data(client_for):
     assert 'data-api="https://en.wikipedia.org/w/api.php"' in body
     assert "moves on to the" in body
 
-    r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1"})
+    r = client.post("/settings", data={"access": "autoconfirmed"})
     assert r.headers["Set-Cookie"].startswith("auto=;")
 
 
@@ -439,11 +451,11 @@ def test_next_kind_with_nothing_matching(client_for):
 
 def test_settings_saves_kind(client_for):
     client = client_for()
-    r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1", "kind": "rename"})
+    r = client.post("/settings", data={"access": "autoconfirmed", "kind": "rename"})
     assert r.headers["Set-Cookie"].startswith("kind=rename;")
     assert '<option value="rename" selected>' in client.get("/settings").get_data(as_text=True)
     assert "only simple renames" in client.get("/").get_data(as_text=True)
-    r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1", "kind": "all"})
+    r = client.post("/settings", data={"access": "autoconfirmed", "kind": "all"})
     assert r.headers["Set-Cookie"].startswith("kind=;")
     assert "Showing:" not in client.get("/").get_data(as_text=True)
 
@@ -573,7 +585,7 @@ def test_theme_toggle_rejects_bad_values_and_other_sites(client_for):
 
 def test_theme_on_settings_page(client_for):
     client = client_for()
-    r = client.post("/settings", data={"access": "autoconfirmed", "watch": "1", "theme": "dark"})
+    r = client.post("/settings", data={"access": "autoconfirmed", "theme": "dark"})
     assert r.headers["Set-Cookie"].startswith("theme=dark;")
     assert '<option value="dark" selected>' in client.get("/settings").get_data(as_text=True)
 
@@ -642,7 +654,7 @@ def test_next_nothing_found_mentions_filters_when_narrowed(client_for):
 
 def test_settings_saves_chosen_infoboxes(client_for):
     client = client_for()
-    base = {"access": "autoconfirmed", "watch": "1", "infoboxes": "1"}
+    base = {"access": "autoconfirmed", "infoboxes": "1"}
     body = client.get("/settings").get_data(as_text=True)
     assert body.count('name="infobox"') == len(ALL_INFOBOXES)
     assert body.count('name="infobox" value="christian_leader" checked') == 1
@@ -661,14 +673,14 @@ def test_settings_saves_chosen_infoboxes(client_for):
 
 
 def test_settings_all_ticked_sets_no_cookie(client_for):
-    r = client_for().post("/settings", data={"access": "autoconfirmed", "watch": "1",
+    r = client_for().post("/settings", data={"access": "autoconfirmed",
                                              "infoboxes": "1", "infobox": ALL_INFOBOXES})
     assert "Set-Cookie" not in r.headers
 
 
 def test_settings_needs_at_least_one_infobox(client_for):
     client = client_for()
-    r = client.post("/settings", data={"access": "extendedconfirmed", "watch": "1",
+    r = client.post("/settings", data={"access": "extendedconfirmed",
                                        "kind": "merge", "infoboxes": "1"})
     body = r.get_data(as_text=True)
     assert r.status_code == 400

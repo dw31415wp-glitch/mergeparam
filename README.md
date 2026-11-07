@@ -43,6 +43,19 @@ python -m venv .venv
 .venv/Scripts/python -m flask --app app run
 ```
 
+On macOS or Linux, run `.venv/bin/python -m flask --app app run` from the
+`mergeparam` directory and open <http://127.0.0.1:5000/>. Enter an English
+Wikipedia article title in the article field, or open a direct link such as
+<http://127.0.0.1:5000/fix?title=Jane+Doe>. The tool fetches the current page
+and presents the suggested change for review; publishing remains on Wikipedia.
+You can also upload a `simple-cases.json` file on the start page. Its `pages`
+entries are visited in order with Next article or Skip. The list is kept in the
+current browser tab, and each article is fetched fresh rather than using the
+revision saved in the file. JavaScript is required for list navigation.
+The header's hotkey toggle selects Mac (Ctrl+Option) or Windows (Alt) shortcuts.
+You can also select them with `?hotkeys=mac` or `?hotkeys=windows`; the choice
+is remembered for the current browser tab as you navigate.
+
 Everything except the WikiProject filter works locally against the public API.
 The WikiProject filter needs the wiki replicas. To use it locally, open an SSH tunnel and
 point the tool at it:

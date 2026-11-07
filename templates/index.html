@@ -15,6 +15,7 @@
 
 {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
 {% if message %}<div class="notice">{{ message }}</div>{% endif %}
+<a class="btn" data-queue-next href="{{ url_for('index') }}" hidden>Next article →</a>
 
 <section class="how">
   <h2>How it works</h2>
@@ -63,5 +64,20 @@
     access can edit. <a href="{{ url_for('settings') }}">Change</a></p>
   {% endif %}
   <button type="submit" class="btn primary big">Give me an article <span aria-hidden="true">→</span></button>
+</form>
+<form class="start fields" data-queue-upload>
+  <label><span>Or upload a simple-cases.json list</span>
+    <input type="file" accept=".json,application/json" required></label>
+  <p class="hint">Pages are opened in file order using their current Wikipedia revisions. The list stays in this browser tab.</p>
+  <p class="notice error" data-queue-error role="alert" hidden></p>
+  <div><button type="submit" class="btn">Open list</button></div>
+</form>
+
+<form class="start fields" method="get" action="{{ url_for('fix') }}">
+  <label>
+    <span>Or enter an article title</span>
+    <input type="text" name="title" placeholder="e.g. Jane Doe" required>
+  </label>
+  <div><button type="submit" class="btn">Open article</button></div>
 </form>
 {% endblock %}

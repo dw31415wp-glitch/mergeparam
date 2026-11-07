@@ -50,24 +50,32 @@
       </p>
       {% endif %}
 
-      <form method="post" action="{{ url_for('prepare') }}" class="merge">
+      <form method="post" action="{{ url_for('prepare') }}" class="merge" data-merge-handoff
+        {% if auto %}data-auto data-api="{{ config.API }}" data-check="{{ url_for('check') }}"
+        data-title="{{ page.title }}" data-revid="{{ page.revid }}" data-before="{{ target.others + 1 }}"{% endif %}>
         <input type="hidden" name="title" value="{{ page.title }}">
         <input type="hidden" name="revid" value="{{ page.revid }}">
+        <input type="hidden" name="queue" value="{{ request.args.get('queue', request.form.get('queue', '')) }}">
         {{ filter_fields(filters) }}
         <label for="value" class="label">New <code>|education=</code></label>
         {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+        <div class="notice error" role="alert" data-merge-error hidden></div>
         <textarea id="value" name="value" rows="{{ [value.count('\n') + 2, 4]|max }}" spellcheck="false"
                   data-original="{{ suggestion.value }}">{{ value }}</textarea>
         {% if suggestion.notes %}
         <ul class="notes">{% for n in suggestion.notes %}<li>{{ n }}</li>{% endfor %}</ul>
         {% endif %}
         <p class="hint">See <a href="{{ config.MOS_URL }}" target="_blank" rel="noopener">MOS:INFOEDU</a> for what belongs in <code>|education=</code>.</p>
+        <label class="check"><input type="checkbox" name="watch" value="1" {% if watch %}checked{% endif %}> Add this article to my watchlist</label>
         <div class="row">
-          <button type="submit" class="btn primary">Continue <span aria-hidden="true">→</span></button>
+          <button type="submit" class="btn primary" data-review-button>Review &amp; publish on Wikipedia (Alt+R) <span aria-hidden="true">↗</span></button>
+          <button type="button" class="btn" data-stop-countdown hidden>Stop countdown (Alt+S)</button>
           <button type="button" class="btn quiet" data-reset hidden>Reset to suggestion</button>
-          <a class="btn quiet" href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Skip this one</a>
+          <a class="btn quiet" data-queue-next href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Skip this one</a>
         </div>
       </form>
+      <p class="hint" data-countdown-status role="status" aria-live="polite"></p>
+      {{ next_controls(page, filters) }}
     {% endif %}
     <p class="manual">Rather do it by hand? <a href="{{ page.title|wikiurl(action='edit') }}" target="_blank" rel="noopener">Edit the article on Wikipedia</a>.</p>
   </section>

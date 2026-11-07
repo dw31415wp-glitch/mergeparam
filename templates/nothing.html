@@ -11,6 +11,6 @@
   {% else %}
     <p>Nothing to do here. <code>|alma_mater=</code> is already gone, so someone may have just fixed it.</p>
   {% endif %}
-  <a class="btn primary" href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Next article <span aria-hidden="true">→</span></a>
+  <a class="btn primary next-btn" data-queue-next href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Next article (Alt+N) <span aria-hidden="true">→</span></a>
 </section>
 {% endblock %}

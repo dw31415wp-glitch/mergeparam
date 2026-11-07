@@ -2,6 +2,161 @@
 document.documentElement.classList.add("js");
 
 document.addEventListener("DOMContentLoaded", () => {
+  const requestedPlatform = new URLSearchParams(location.search).get("hotkeys");
+  let platform = ["mac", "windows"].includes(requestedPlatform) ? requestedPlatform :
+    sessionStorage.getItem("mergeparam-hotkeys") || (/Mac|iPhone|iPad/.test(navigator.platform) ? "mac" : "windows");
+  if (!["mac", "windows"].includes(platform)) platform = "windows";
+  const shortcutToggle = document.querySelector("[data-shortcut-toggle]");
+  function updateShortcuts() {
+    sessionStorage.setItem("mergeparam-hotkeys", platform);
+    const url = new URL(location.href);
+    url.searchParams.set("hotkeys", platform);
+    history.replaceState(history.state, "", url);
+    shortcutToggle.hidden = false;
+    shortcutToggle.textContent = `Hotkeys: ${platform === "mac" ? "Mac" : "Windows"}`;
+    shortcutToggle.title = `Switch to ${platform === "mac" ? "Windows" : "Mac"} hotkeys`;
+    const modifier = platform === "mac" ? "Ctrl+Option" : "Alt";
+    for (const element of document.querySelectorAll("[data-review-button], [data-stop-countdown], .next-btn")) {
+      element.innerHTML = element.innerHTML.replace(/(?:Alt|Ctrl\+Option)\+([NRS])/g, `${modifier}+$1`);
+    }
+  }
+  shortcutToggle.addEventListener("click", () => { platform = platform === "mac" ? "windows" : "mac"; updateShortcuts(); });
+  const shortcut = event => event.altKey && !event.metaKey && !event.shiftKey && !event.repeat &&
+    (platform === "mac" ? event.ctrlKey : !event.ctrlKey);
+  const queueKey = "mergeparam-simple-pages";
+  const upload = document.querySelector("[data-queue-upload]");
+  if (upload) upload.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = upload.querySelector("[data-queue-error]");
+    try {
+      const data = JSON.parse(await upload.querySelector('input[type="file"]').files[0].text());
+      if (!Array.isArray(data.pages) || !data.pages.length ||
+          data.pages.some(page => !page || typeof page.page_name !== "string" || !page.page_name.trim())) {
+        throw new Error("Expected a nonempty pages list with a page_name for every entry.");
+      }
+      const titles = data.pages.map(page => page.page_name.trim());
+      sessionStorage.setItem(queueKey, JSON.stringify(titles));
+      location.href = "/fix?" + new URLSearchParams({title: titles[0], queue: "0"});
+    } catch (err) {
+      error.textContent = "Could not open the list: " + err.message;
+      error.hidden = false;
+    }
+  });
+  const position = new URLSearchParams(location.search).get("queue") ??
+    document.querySelector("[data-queue-position], input[name=queue]")?.value ?? "";
+  if (/^\d+$/.test(position)) {
+    try {
+      const titles = JSON.parse(sessionStorage.getItem(queueKey));
+      const index = Number(position);
+      if (Array.isArray(titles) && index < titles.length) {
+        const next = index + 1;
+        for (const link of document.querySelectorAll("[data-queue-next]")) {
+          link.hidden = false;
+          link.href = next < titles.length
+            ? "/fix?" + new URLSearchParams({title: titles[next], queue: String(next)})
+            : "/?queue_done=1";
+          if (next >= titles.length) link.textContent = link.classList.contains("next-btn") ? "Finish list (Alt+N) →" : "Finish list →";
+        }
+        const marker = document.createElement("p");
+        marker.className = "hint";
+        marker.textContent = `Uploaded list: article ${index + 1} of ${titles.length}`;
+        document.querySelector("main").prepend(marker);
+      }
+    } catch (_) { /* A missing or invalid list leaves ordinary navigation in place. */ }
+  }
+  updateShortcuts();
+  if (new URLSearchParams(location.search).has("queue_done")) {
+    const marker = document.createElement("p");
+    marker.className = "notice";
+    marker.textContent = "You have reached the end of the uploaded list.";
+    document.querySelector("main").prepend(marker);
+  }
+  document.addEventListener("keydown", (event) => {
+    if (shortcut(event) && event.code === "KeyN") {
+      const next = document.querySelector(".next-btn");
+      if (next) { event.preventDefault(); next.click(); }
+    }
+  });
+  const reviewForm = document.querySelector("form[data-merge-handoff], form[data-handoff]");
+  if (reviewForm) {
+    const button = reviewForm.querySelector("[data-review-button]");
+    const stop = reviewForm.querySelector("[data-stop-countdown]");
+    const status = reviewForm.querySelector("[data-countdown-status]") || document.querySelector("[data-countdown-status]");
+    let remaining = 3;
+    let timer;
+    const cancel = () => {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+      stop.hidden = true;
+      status.textContent = "Countdown stopped. Open the Wikipedia review when ready.";
+    };
+    stop.hidden = false;
+    status.textContent = `Opening Wikipedia review in ${remaining} seconds.`;
+    timer = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) status.textContent = `Opening Wikipedia review in ${remaining} seconds.`;
+      else {
+        clearInterval(timer);
+        timer = null;
+        stop.hidden = true;
+        status.textContent = "Opening Wikipedia review. If your browser blocks pop-ups, allow them and try again.";
+        reviewForm.requestSubmit(button);
+      }
+    }, 1000);
+    stop.addEventListener("click", cancel);
+    reviewForm.addEventListener("submit", () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+        stop.hidden = true;
+        status.textContent = "Opening Wikipedia review.";
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (!shortcut(event)) return;
+      if (event.code === "KeyS") { event.preventDefault(); cancel(); }
+      if (event.code === "KeyR") { event.preventDefault(); reviewForm.requestSubmit(button); }
+    });
+  }
+  const mergeForm = document.querySelector("form[data-merge-handoff]");
+  if (mergeForm) mergeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = mergeForm.querySelector("[data-merge-error]");
+    error.hidden = true;
+    const target = window.open("", "mergeparam-wikipedia");
+    if (!target) {
+      error.textContent = "Allow pop-ups for this site to open the Wikipedia edit.";
+      error.hidden = false;
+      return;
+    }
+    try {
+      const response = await fetch(mergeForm.action, {
+        method: "POST", body: new FormData(mergeForm), headers: {"X-Requested-With": "fetch"},
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not prepare the edit.");
+      const handoff = document.createElement("form");
+      handoff.method = "post";
+      handoff.action = data.url;
+      handoff.target = "mergeparam-wikipedia";
+      for (const [name, value] of Object.entries(data.fields)) {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        handoff.append(input);
+      }
+      document.body.append(handoff);
+      handoff.submit();
+      handoff.remove();
+      document.documentElement.classList.add("handed-off");
+      if (mergeForm.hasAttribute("data-auto")) autoAdvance(mergeForm);
+    } catch (err) {
+      error.textContent = err.message || "Could not prepare the edit.";
+      error.hidden = false;
+    }
+  });
   // After handing off to Wikipedia, point the user at the next article.
   for (const form of document.querySelectorAll("form[data-handoff]")) {
     form.addEventListener("submit", () => {
