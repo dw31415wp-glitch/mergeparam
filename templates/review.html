@@ -87,4 +87,15 @@
     {% if not context.infobox and not context.lead %}<p class="hint">Preview unavailable.</p>{% endif %}
   </aside>
 </div>
+<section class="card" aria-label="Keyboard workflow">
+  <h2>Keyboard workflow</h2>
+  <p>After reviewing one article, leave the Wikipedia tab open. For each following article:</p>
+  <ol>
+    <li>Choose the next article: <strong data-workflow-next>Alt+N</strong>.</li>
+    <li>Switch to the Wikipedia tab: <strong data-workflow-tab>Ctrl+Tab</strong>.</li>
+    <li>Review the diff, then publish using Wikipedia's shortcut: <strong data-workflow-publish>Alt+Shift+S</strong>.</li>
+    <li>Switch back to this tab: <strong data-workflow-tab>Ctrl+Tab</strong>.</li>
+  </ol>
+  <p class="hint">Browser tab shortcuts can vary. Wikipedia may require additional confirmation before publishing.</p>
+</section>
 {% endblock %}

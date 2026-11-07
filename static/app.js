@@ -16,6 +16,9 @@ document.addEventListener("DOMContentLoaded", () => {
     shortcutToggle.textContent = `Hotkeys: ${platform === "mac" ? "Mac" : "Windows"}`;
     shortcutToggle.title = `Switch to ${platform === "mac" ? "Windows" : "Mac"} hotkeys`;
     const modifier = platform === "mac" ? "Ctrl+Option" : "Alt";
+    for (const item of document.querySelectorAll("[data-workflow-next]")) item.textContent = `${modifier}+N`;
+    for (const item of document.querySelectorAll("[data-workflow-tab]")) item.textContent = platform === "mac" ? "Control+Tab" : "Ctrl+Tab";
+    for (const item of document.querySelectorAll("[data-workflow-publish]")) item.textContent = platform === "mac" ? "Control+Option+S" : "Alt+Shift+S";
     for (const element of document.querySelectorAll("[data-review-button], [data-stop-countdown], .next-btn")) {
       element.innerHTML = element.innerHTML.replace(/(?:Alt|Ctrl\+Option)\+([NRS])/g, `${modifier}+$1`);
     }
