@@ -27,7 +27,13 @@ cookies hold the editor's settings (which kinds of fix to show, protection level
 auto-advance, light/dark theme), one
 cookie per setting, and each is set only if the editor changes that setting from the default.
 
-With auto-advance on (off by default), the browser polls Wikipedia's public API every five
+**Autoload next article** is off by default. Turn it on in Keyboard workflow or add
+`autoload=1` to the URL. After handing off the diff to Wikipedia, the tool loads the
+next article when you switch away. When you return to the tool, the next Wikipedia diff
+opens immediately. Turning Autoload off sets `autoload=0` and lets you open
+the diff and advance manually.
+When autoload and the publish-based auto-advance setting are both enabled, the browser
+polls Wikipedia's public API every five
 seconds for the article's latest revision ID, for up to 15 minutes. When it changes, it asks the
 tool once (`/check`) whether that revision removed the `|alma_mater=`, and if so counts down and
 loads the next article.

@@ -31,6 +31,9 @@
 </section>
 
 <form class="start" method="get" action="{{ url_for('next_article') }}">
+  {% if request.args.get('autoload') in ('0', '1') %}
+  <input type="hidden" name="autoload" value="{{ request.args.get('autoload') }}">
+  {% endif %}
   <details {% if filters %}open{% endif %}>
     <summary>Pick a topic (optional)</summary>
     <div class="fields">
@@ -74,6 +77,9 @@
 </form>
 
 <form class="start fields" method="get" action="{{ url_for('fix') }}">
+  {% if request.args.get('autoload') in ('0', '1') %}
+  <input type="hidden" name="autoload" value="{{ request.args.get('autoload') }}">
+  {% endif %}
   <label>
     <span>Or enter an article title</span>
     <input type="text" name="title" placeholder="e.g. Jane Doe" required>

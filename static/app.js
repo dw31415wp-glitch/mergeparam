@@ -3,6 +3,12 @@ document.documentElement.classList.add("js");
 
 document.addEventListener("DOMContentLoaded", () => {
   const requestedPlatform = new URLSearchParams(location.search).get("hotkeys");
+  let autoload = new URLSearchParams(location.search).get("autoload");
+  function withAutoload(href) {
+    const url = new URL(href, location.href);
+    if (autoload === "0" || autoload === "1") url.searchParams.set("autoload", autoload);
+    return url.href;
+  }
   let platform = ["mac", "windows"].includes(requestedPlatform) ? requestedPlatform :
     sessionStorage.getItem("mergeparam-hotkeys") || (/Mac|iPhone|iPad/.test(navigator.platform) ? "mac" : "windows");
   if (!["mac", "windows"].includes(platform)) platform = "windows";
@@ -19,8 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const item of document.querySelectorAll("[data-workflow-next]")) item.textContent = `${modifier}+N`;
     for (const item of document.querySelectorAll("[data-workflow-tab]")) item.textContent = platform === "mac" ? "Control+Tab" : "Ctrl+Tab";
     for (const item of document.querySelectorAll("[data-workflow-publish]")) item.textContent = platform === "mac" ? "Control+Option+S" : "Alt+Shift+S";
-    for (const element of document.querySelectorAll("[data-review-button], [data-stop-countdown], .next-btn")) {
-      element.innerHTML = element.innerHTML.replace(/(?:Alt|Ctrl\+Option)\+([NRS])/g, `${modifier}+$1`);
+    for (const element of document.querySelectorAll("[data-review-button], .next-btn")) {
+      element.innerHTML = element.innerHTML.replace(/(?:Alt|Ctrl\+Option)\+([NR])/g, `${modifier}+$1`);
     }
   }
   shortcutToggle.addEventListener("click", () => { platform = platform === "mac" ? "windows" : "mac"; updateShortcuts(); });
@@ -39,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const titles = data.pages.map(page => page.page_name.trim());
       sessionStorage.setItem(queueKey, JSON.stringify(titles));
-      location.href = "/fix?" + new URLSearchParams({title: titles[0], queue: "0"});
+      location.href = withAutoload("/fix?" + new URLSearchParams({title: titles[0], queue: "0"}));
     } catch (err) {
       error.textContent = "Could not open the list: " + err.message;
       error.hidden = false;
@@ -67,6 +73,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (_) { /* A missing or invalid list leaves ordinary navigation in place. */ }
   }
+  const nextLinks = document.querySelectorAll("[data-queue-next], [data-back]");
+  const updateNextLinks = () => {
+    for (const link of nextLinks) link.href = withAutoload(link.href);
+  };
+  updateNextLinks();
   updateShortcuts();
   if (new URLSearchParams(location.search).has("queue_done")) {
     const marker = document.createElement("p");
@@ -81,46 +92,82 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   const reviewForm = document.querySelector("form[data-merge-handoff], form[data-handoff]");
+  let syncReview;
   if (reviewForm) {
     const button = reviewForm.querySelector("[data-review-button]");
-    const stop = reviewForm.querySelector("[data-stop-countdown]");
-    const status = reviewForm.querySelector("[data-countdown-status]") || document.querySelector("[data-countdown-status]");
-    let remaining = 3;
-    let timer;
-    const cancel = () => {
-      if (!timer) return;
-      clearInterval(timer);
-      timer = null;
-      stop.hidden = true;
-      status.textContent = "Countdown stopped. Open the Wikipedia review when ready.";
-    };
-    stop.hidden = false;
-    status.textContent = `Opening Wikipedia review in ${remaining} seconds.`;
-    timer = setInterval(() => {
-      remaining -= 1;
-      if (remaining > 0) status.textContent = `Opening Wikipedia review in ${remaining} seconds.`;
-      else {
-        clearInterval(timer);
-        timer = null;
-        stop.hidden = true;
-        status.textContent = "Opening Wikipedia review. If your browser blocks pop-ups, allow them and try again.";
+    const status = document.querySelector("[data-review-status]");
+    let reviewRequested = false;
+    syncReview = () => {
+      if (reviewRequested) return;
+      if (autoload !== "1") {
+        status.textContent = "";
+      } else if (document.hidden) {
+        status.textContent = "The Wikipedia diff opens when you return to this tab.";
+      } else {
         reviewForm.requestSubmit(button);
       }
-    }, 1000);
-    stop.addEventListener("click", cancel);
+    };
+    document.addEventListener("visibilitychange", syncReview);
     reviewForm.addEventListener("submit", () => {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-        stop.hidden = true;
-        status.textContent = "Opening Wikipedia review.";
-      }
+      reviewRequested = true;
+      document.removeEventListener("visibilitychange", syncReview);
+      status.textContent = "Opening Wikipedia review. If your browser blocks pop-ups, allow them and try again.";
     });
     document.addEventListener("keydown", (event) => {
-      if (!shortcut(event)) return;
-      if (event.code === "KeyS") { event.preventDefault(); cancel(); }
-      if (event.code === "KeyR") { event.preventDefault(); reviewForm.requestSubmit(button); }
+      if (shortcut(event) && event.code === "KeyR") {
+        event.preventDefault();
+        reviewForm.requestSubmit(button);
+      }
     });
+  }
+  const nextAfterHandoff = document.querySelector("#after-handoff .next-btn");
+  const autoloadButton = document.querySelector("[data-next-autoload]");
+  let handedOffForm;
+  let publishCheck;
+  function loadNextWhenHidden() {
+    if (!document.hidden) return;
+    document.removeEventListener("visibilitychange", loadNextWhenHidden);
+    location.href = nextAfterHandoff.href;
+  }
+  function syncAdvance() {
+    document.removeEventListener("visibilitychange", loadNextWhenHidden);
+    publishCheck?.abort();
+    publishCheck = null;
+    if (autoload !== "1" || !handedOffForm || !nextAfterHandoff) return;
+    if (handedOffForm.hasAttribute("data-auto")) {
+      publishCheck = new AbortController();
+      autoAdvance(handedOffForm, publishCheck.signal);
+      return;
+    }
+    document.addEventListener("visibilitychange", loadNextWhenHidden);
+    loadNextWhenHidden();
+  }
+  if (autoloadButton) {
+    const afterText = document.querySelector("#after-handoff .after-text");
+    const enabledText = afterText.textContent;
+    const state = autoloadButton.querySelector("[data-next-autoload-state]");
+    const updateToggle = () => {
+      const enabled = autoload === "1";
+      autoloadButton.setAttribute("aria-pressed", String(enabled));
+      autoloadButton.classList.toggle("primary", enabled);
+      state.textContent = enabled ? "On" : "Off";
+      afterText.textContent = enabled ? enabledText : "Choose Next article when you're ready.";
+    };
+    updateToggle();
+    autoloadButton.closest("[data-next-autoload-option]").hidden = false;
+    autoloadButton.addEventListener("click", () => {
+      autoload = autoload === "1" ? "0" : "1";
+      history.replaceState(history.state, "", withAutoload(location.href));
+      updateNextLinks();
+      updateToggle();
+      syncAdvance();
+      syncReview?.();
+    });
+  }
+  function advanceAfterHandoff(form) {
+    if (handedOffForm === form) return;
+    handedOffForm = form;
+    syncAdvance();
   }
   const mergeForm = document.querySelector("form[data-merge-handoff]");
   if (mergeForm) mergeForm.addEventListener("submit", async (event) => {
@@ -154,7 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
       handoff.submit();
       handoff.remove();
       document.documentElement.classList.add("handed-off");
-      if (mergeForm.hasAttribute("data-auto")) autoAdvance(mergeForm);
+      advanceAfterHandoff(mergeForm);
     } catch (err) {
       error.textContent = err.message || "Could not prepare the edit.";
       error.hidden = false;
@@ -162,7 +209,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   // After handing off to Wikipedia, point the user at the next article.
   for (const form of document.querySelectorAll("form[data-handoff]")) {
-    form.addEventListener("submit", () => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!window.open("", form.target)) return;
+      form.submit();
       document.documentElement.classList.add("handed-off");
       const steps = document.querySelectorAll(".steps li");
       steps.forEach((li, i) => {
@@ -171,21 +221,38 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       const next = document.querySelector("#after-handoff .next-btn");
       if (next) setTimeout(() => next.focus(), 100);
-      if (form.hasAttribute("data-auto")) autoAdvance(form);
+      advanceAfterHandoff(form);
     });
   }
+  syncReview?.();
 
-  // "Reset to suggestion" appears once the suggested value has been edited.
+  // Switch suggestions in the same editable field used for the Wikipedia review.
   const textarea = document.querySelector("textarea[data-original]");
   const reset = document.querySelector("[data-reset]");
   if (textarea && reset) {
-    const sync = () => { reset.hidden = textarea.value === textarea.dataset.original; };
+    const institutionFirst = document.querySelector("[data-institution-first]");
+    const lineBreaks = document.querySelector("[data-line-breaks]");
+    const notes = document.querySelector("[data-suggestion-notes]");
+    const sync = () => {
+      reset.hidden = textarea.value === textarea.dataset.original;
+      if (institutionFirst) {
+        institutionFirst.disabled = textarea.value === institutionFirst.dataset.institutionFirst;
+        lineBreaks.disabled = textarea.value === lineBreaks.dataset.lineBreaks;
+        notes.hidden = institutionFirst.disabled || lineBreaks.disabled;
+      }
+    };
     textarea.addEventListener("input", sync);
-    reset.addEventListener("click", () => {
-      textarea.value = textarea.dataset.original;
+    const useSuggestion = (value) => {
+      textarea.value = value;
       sync();
       textarea.focus();
-    });
+    };
+    reset.addEventListener("click", () => useSuggestion(textarea.dataset.original));
+    if (institutionFirst) {
+      institutionFirst.closest("[data-format-option]").hidden = false;
+      institutionFirst.addEventListener("click", () => useSuggestion(institutionFirst.dataset.institutionFirst));
+      lineBreaks.addEventListener("click", () => useSuggestion(lineBreaks.dataset.lineBreaks));
+    }
     sync();
   }
 
@@ -242,17 +309,21 @@ const POLL_MS = 5000;
 const GIVE_UP_MS = 15 * 60 * 1000;
 const COUNTDOWN_S = 3;
 
-function autoAdvance(form) {
+function autoAdvance(form, signal) {
   const box = document.querySelector("#after-handoff .auto-status");
   const next = document.querySelector("#after-handoff .next-btn");
-  if (!box || !next || form.dataset.polling) return;
-  form.dataset.polling = "1";
+  if (!box || !next) return;
 
   const status = box.querySelector("[role=status]");
   const stay = box.querySelector("[data-stay]");
   const say = (text) => { box.hidden = false; status.textContent = text; };
   const started = Date.now();
   let timer;
+  signal.addEventListener("abort", () => {
+    clearTimeout(timer);
+    box.hidden = true;
+    stay.hidden = true;
+  }, { once: true });
 
   const api = new URL(form.dataset.api);
   api.search = new URLSearchParams({
@@ -261,14 +332,14 @@ function autoAdvance(form) {
   });
 
   async function latestRevid() {
-    const data = await (await fetch(api, { cache: "no-store" })).json();
+    const data = await (await fetch(api, { cache: "no-store", signal })).json();
     return data?.query?.pages?.[0]?.revisions?.[0]?.revid;
   }
 
   async function fixedBy(revid) {
     const check = new URL(form.dataset.check, location.href);
     check.search = new URLSearchParams({ title: form.dataset.title, revid, before: form.dataset.before });
-    const r = await fetch(check, { cache: "no-store" });
+    const r = await fetch(check, { cache: "no-store", signal });
     if (!r.ok) throw new Error("check failed");
     return (await r.json()).done;
   }
@@ -280,15 +351,18 @@ function autoAdvance(form) {
     }
     try {
       const revid = await latestRevid();
+      if (signal.aborted) return;
       if (revid && String(revid) !== form.dataset.revid) {
-        if (await fixedBy(revid)) return countdown();
+        const fixed = await fixedBy(revid);
+        if (signal.aborted) return;
+        if (fixed) return countdown();
         say("The article was edited, but |alma_mater= is still there. Check it on Wikipedia, or move on.");
         return;
       }
     } catch (e) {
       // A network hiccup or a busy server: just try again next time.
     }
-    timer = setTimeout(poll, POLL_MS);
+    if (!signal.aborted) timer = setTimeout(poll, POLL_MS);
   }
 
   function countdown() {
@@ -298,7 +372,7 @@ function autoAdvance(form) {
       clearTimeout(timer);
       stay.hidden = true;
       say("Published ✓");
-    }, { once: true });
+    }, { once: true, signal });
     const tick = () => {
       if (left === 0) {
         location.href = next.href;

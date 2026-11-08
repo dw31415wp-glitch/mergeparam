@@ -159,7 +159,10 @@ def create_app(wiki: Wiki | None = None) -> Flask:
                    else "Couldn't find an article to fix. Please try again.")
             return render_index(filters, message=msg)
         page, _ = found
-        return redirect(url_for("fix", title=page.title, **filters.as_args()))
+        autoload = request.args.get("autoload")
+        return redirect(url_for("fix", title=page.title,
+                                autoload=autoload if autoload in ("0", "1") else None,
+                                **filters.as_args()))
 
     @app.get("/fix")
     def fix():

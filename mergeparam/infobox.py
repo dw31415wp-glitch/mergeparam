@@ -305,6 +305,8 @@ class Suggestion:
     added: list[str] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    institution_first: str | None = None
+    line_breaks: str | None = None
 
 
 def _build_list(like: ValueList, items: list[str]) -> str:
@@ -393,13 +395,16 @@ def suggest(alma: str, education: str | None, redirects: dict[str, str] | None =
                      "each one on its own line.")
     notes.append("New entries were added at the end. Check the order "
                  "(education is usually listed chronologically).")
-    notes.append("If |education= lists degrees and |alma_mater= lists where they were earned, "
-                 "combine them into one entry per institution, "
-                 "e.g. [[Harvard University]] (BA, 1990).")
     if dupes:
         notes.append("Some |alma_mater= entries look like duplicates of existing "
                      "|education= entries and were left out. Check that nothing was lost.")
-    return Suggestion("merge", value, added, dupes, notes)
+    institution_first = None
+    line_breaks = None
+    if alma_list.kind == edu_list.kind == "single" and not comma_lists:
+        institution_first = f"{alma_list.items[0]} ({edu_list.items[0]})"
+        line_breaks = "<br/>".join(edu_list.items + added)
+    return Suggestion("merge", value, added, dupes, notes,
+                      institution_first=institution_first, line_breaks=line_breaks)
 
 
 # ------------------------------------------------------------------ applying

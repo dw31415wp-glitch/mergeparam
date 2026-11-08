@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import steps, wikipedia_form, next_controls, filter_fields, code %}
+{% from "_macros.html" import steps, wikipedia_form, next_controls, keyboard_workflow, filter_fields, code %}
 {% block title %}{{ page.title }} · mergeparam{% endblock %}
 {% block main %}
 {{ steps(1) }}
@@ -33,7 +33,7 @@
         <div class="after"><span class="label">After</span>{{ code("| education = " ~ target.alma) }}</div>
       </div>
       {{ wikipedia_form(form_url, fields, watch, page, target, auto) }}
-      {{ next_controls(page, filters) }}
+      {{ next_controls(page, filters, auto) }}
     {% else %}
       <h2>{{ "Remove the duplicate" if suggestion.action == "drop" else "Combine the two values" }}</h2>
       <p>This infobox has both parameters. Check the suggested <code>|education=</code> below and edit it
@@ -50,7 +50,7 @@
       </p>
       {% endif %}
 
-      <form method="post" action="{{ url_for('prepare') }}" class="merge" data-merge-handoff
+      <form method="post" action="{{ url_for('prepare', autoload=request.args.get('autoload')) }}" class="merge" data-merge-handoff
         {% if auto %}data-auto data-api="{{ config.API }}" data-check="{{ url_for('check') }}"
         data-title="{{ page.title }}" data-revid="{{ page.revid }}" data-before="{{ target.others + 1 }}"{% endif %}>
         <input type="hidden" name="title" value="{{ page.title }}">
@@ -62,20 +62,44 @@
         <div class="notice error" role="alert" data-merge-error hidden></div>
         <textarea id="value" name="value" rows="{{ [value.count('\n') + 2, 4]|max }}" spellcheck="false"
                   data-original="{{ suggestion.value }}">{{ value }}</textarea>
+        {% if suggestion.institution_first %}
+        <div class="row" data-format-option hidden>
+          <!-- aria-describedby for screen readers -->
+          <button type="button" class="btn" data-institution-first="{{ suggestion.institution_first }}"
+                  aria-describedby="institution-first-help">Use institution (degree)</button>
+          <button type="button" class="btn" data-line-breaks="{{ suggestion.line_breaks }}"
+                  aria-describedby="use-br-help">Use &lt;br/&gt; separators</button>
+          <span class="hint" id="institution-first-help">Use institution: switches from the suggested list to <strong>Alma Mater (Education)</strong>.</span>
+          <span class="hint" id="use-br-help">Use br: switches to br seperated.</span>
+        </div>
+        {% endif %}
         {% if suggestion.notes %}
-        <ul class="notes">{% for n in suggestion.notes %}<li>{{ n }}</li>{% endfor %}</ul>
+        <section aria-labelledby="suggestion-heading" data-suggestion-notes>
+          <h3 class="label" id="suggestion-heading">About this suggestion</h3>
+          <ul class="notes">
+            {% for n in suggestion.notes %}<li>{{ n }}</li>{% endfor %}
+            {% if suggestion.action == "merge" %}
+            <li>
+              <strong>If |education= lists degrees and |alma_mater= lists where they were earned</strong>,
+              combine them into one entry per institution, e.g. [[Harvard University]] (BA, 1990).
+              {% if suggestion.institution_first %}
+              Select <strong>Use institution (degree)</strong> to apply this format.
+              {% endif %}
+            </li>
+            {% endif %}
+          </ul>
+        </section>
         {% endif %}
         <p class="hint">See <a href="{{ config.MOS_URL }}" target="_blank" rel="noopener">MOS:INFOEDU</a> for what belongs in <code>|education=</code>.</p>
         <label class="check"><input type="checkbox" name="watch" value="1" {% if watch %}checked{% endif %}> Add this article to my watchlist</label>
         <div class="row">
           <button type="submit" class="btn primary" data-review-button>Review &amp; publish on Wikipedia (Alt+R) <span aria-hidden="true">↗</span></button>
-          <button type="button" class="btn" data-stop-countdown hidden>Stop countdown (Alt+S)</button>
           <button type="button" class="btn quiet" data-reset hidden>Reset to suggestion</button>
           <a class="btn quiet" data-queue-next href="{{ url_for('next_article', skip=page.title, **filters.as_args()) }}">Skip this one</a>
         </div>
       </form>
-      <p class="hint" data-countdown-status role="status" aria-live="polite"></p>
-      {{ next_controls(page, filters) }}
+      <p class="hint" data-review-status role="status" aria-live="polite"></p>
+      {{ next_controls(page, filters, auto) }}
     {% endif %}
     <p class="manual">Rather do it by hand? <a href="{{ page.title|wikiurl(action='edit') }}" target="_blank" rel="noopener">Edit the article on Wikipedia</a>.</p>
   </section>
@@ -87,15 +111,5 @@
     {% if not context.infobox and not context.lead %}<p class="hint">Preview unavailable.</p>{% endif %}
   </aside>
 </div>
-<section class="card" aria-label="Keyboard workflow">
-  <h2>Keyboard workflow</h2>
-  <p>After reviewing one article, leave the Wikipedia tab open. For each following article:</p>
-  <ol>
-    <li>Choose the next article: <strong data-workflow-next>Alt+N</strong>.</li>
-    <li>Switch to the Wikipedia tab: <strong data-workflow-tab>Ctrl+Tab</strong>.</li>
-    <li>Review the diff, then publish using Wikipedia's shortcut: <strong data-workflow-publish>Alt+Shift+S</strong>.</li>
-    <li>Switch back to this tab: <strong data-workflow-tab>Ctrl+Tab</strong>.</li>
-  </ol>
-  <p class="hint">Browser tab shortcuts can vary. Wikipedia may require additional confirmation before publishing.</p>
-</section>
+{{ keyboard_workflow(auto) }}
 {% endblock %}

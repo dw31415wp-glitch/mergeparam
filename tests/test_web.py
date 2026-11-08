@@ -86,10 +86,18 @@ def test_index(client_for):
     assert "default-src 'self'" in r.headers["Content-Security-Policy"]
 
 
-def test_next_redirects_to_fix_with_filters(client_for):
-    r = client_for(make_page("Jane Doe", RENAME_TEXT)).get("/next?category=Category:American_physicists")
+@pytest.mark.parametrize("autoload", [None, "0", "1"])
+def test_next_redirects_to_fix_with_filters(client_for, autoload):
+    query = {"category": "Category:American_physicists"}
+    if autoload is not None:
+        query["autoload"] = autoload
+    r = client_for(make_page("Jane Doe", RENAME_TEXT)).get("/next", query_string=query)
     assert r.status_code == 302
-    assert "/fix?title=Jane+Doe&category=American+physicists" in r.headers["Location"]
+    assert "/fix?title=Jane+Doe&" in r.headers["Location"]
+    assert "category=American+physicists" in r.headers["Location"]
+    assert ("autoload=" in r.headers["Location"]) == (autoload is not None)
+    if autoload is not None:
+        assert f"autoload={autoload}" in r.headers["Location"]
 
 
 def test_next_unknown_category(client_for):
@@ -133,6 +141,36 @@ def test_fix_merge_shows_editable_suggestion(client_for):
     assert "Combine the two values" in body
     assert "wpTextbox1" not in body  # merges go through /prepare first
     assert "{{Plainlist|\n* [[Stanford University]] (BS)\n* [[Harvard]]\n}}" in html.unescape(body)
+
+
+@pytest.mark.parametrize("alma, education, alternative", [
+    ("Indian Institute of Hardware Technology, Guwahati", "Political Science",
+     "Indian Institute of Hardware Technology, Guwahati (Political Science)"),
+    ("[[Harvard University|Harvard]]", "[[Political science]]",
+     "[[Harvard University|Harvard]] ([[Political science]])"),
+    ("{{ubl|Harvard|Yale}}", "Political Science", None),
+    ("Harvard", "Political Science<br>History", None),
+    ("[[Harvard]], [[Yale]]", "Political Science", None),
+    ("Harvard University", "[[Harvard University]] (AB)", None),
+    ("Harvard", "", None),
+])
+def test_merge_format_options(client_for, alma, education, alternative):
+    text = "{{Infobox person|alma_mater=" + alma + "|education=" + education + "}}"
+    client = client_for(make_page("Example", text))
+    body = client.get("/fix?title=Example").get_data(as_text=True)
+    for attribute, expected in (
+        ("data-institution-first", alternative),
+        ("data-line-breaks", education + "<br/>" + alma if alternative else None),
+    ):
+        match = re.search(rf'{attribute}="([^"]*)"', body)
+        assert (html.unescape(match[1]) if match else None) == expected
+        if expected is None:
+            continue
+        response = client.post("/prepare", data={"title": "Example", "revid": "100",
+                                                  "value": expected})
+        fields = hidden_fields(response.get_data(as_text=True))
+        assert fields["wpTextbox1"] == "{{Infobox person|education=" + expected + "}}"
+        assert "wpDiff" in fields
 
 
 def test_fix_merge_detects_duplicate_via_redirect(client_for):
